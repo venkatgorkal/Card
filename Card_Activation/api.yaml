@@ -140,7 +140,7 @@ components:
 
     # Data Object which holds card information -------------------------------------------------------
 
-    CardData:
+    CardData@:
       description: "Object used to hold card data "
       type: object
       properties:
