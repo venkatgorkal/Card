@@ -1,0 +1,346 @@
+openapi: "3.0.3"
+info:
+  description: >-
+    The service allows activation of customers plastic cards. This service will be able to
+    activate cards at POS, through call center or scotia online.
+  version: "2.0.0" 
+  x-template-version: 3.0.0
+  title: Card Activation
+  contact:
+    name: Enterprise API & Events Committee
+    url: 'https://confluence.agile.bns/display/APID/'
+    email: enterpriseAPIIntake@scotiabank.com
+  license:
+    name: Card Activation
+servers:
+  - url: '/api/v2'
+
+paths:
+  /cards/{key}/activate:
+    post:
+      tags:
+        - Card Activation
+      description: "Card Activation after replacement or new issue to customer"
+      summary: active a new card
+      security:
+        - oAuth2ClientCredentials:
+            - cards.plastic-card.<epm code>.activation.write
+      operationId: customer_card_activate
+      parameters:
+        ##Common Standard Headers
+        - $ref: "#/components/parameters/TraceId"
+        - $ref: "#/components/parameters/SpanId"
+        - $ref: "#/components/parameters/CountryCode"
+        - $ref: "#/components/parameters/ChannelId"
+        - $ref: "#/components/parameters/OriginatingApplicationCode"
+        - $ref: "#/components/parameters/UserContext"
+        - $ref: "#/components/parameters/Key"
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActivateCardRequest'
+
+      responses:
+        200:
+          description: 'Card Activation was sucessful.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivateCardResponse'
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyDataResponse"
+
+        401:
+          description: Unauthorized. Request was understood but provided credentials info is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyDataResponse"
+
+        403:
+          description: >-
+            The principal associated with the request does not have sufficient
+            rights to preform this operation on the requested resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyDataResponse'
+
+        422:
+          description: Request validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyDataResponse"
+
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyDataResponse"
+
+        default:
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyDataResponse"
+
+components:
+  securitySchemes:
+    oAuth2ClientCredentials:
+      type: oauth2
+      description: 'Use OpenAM for authentication/authorization'
+      flows:
+        clientCredentials:
+          tokenUrl: 'https://wam-ist.cloud.bns/sso/oauth2/bns/access_token'
+          scopes:
+            #<API Business Category>.<API Name.Resource Owner identifier/Service EPM code>.<Resource Function>.<Permission>: |
+            cards.plastic-card.<epm code>.activation.write: plastic card activation
+
+          refreshUrl: 'https://wam-ist.cloud.bns/sso/oauth2/bns/access_token'
+
+  schemas:
+
+    # Customer Card Data Object used by the Activation Request ---------------------------------------------------------------------------------
+
+    ActivateCardRequest:
+      required:
+        - carddata
+        - activationtype
+      type: object
+      additionalProperties: false
+      properties:
+        carddata:
+          $ref: '#/components/schemas/CardData'
+        activationtype:
+          $ref: '#/components/schemas/ActivationTypeData'
+
+
+    # Customer Card Data Object used by the Activation Response ---------------------------------------------------------------------------------
+
+    ActivateCardResponse:
+      description: "Object used to hold the data response for the Card Replacement endpoint."
+      properties:
+        data:
+          $ref: '#/components/schemas/DataResponse'
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+
+
+    # Data Object which holds card information -------------------------------------------------------
+
+    CardData:
+      description: "Object used to hold card data "
+      type: object
+      properties:
+        card_expiry_date:
+          type: string
+          pattern: \b([0-9][0-9])(0+[1-9]|1+[0-2])\b
+          maxLength: 4
+          minLength: 4
+          example: "2012"
+          description: "Card Expiry date in YYMM format, it is mandatory for debit card, optional for credit card"
+          x-masking: Mask.Strategy.TRUNCATE
+
+    # Data Object which holds card Activation Type information -------------------------------------------------------
+
+    ActivationTypeData:
+      required:
+        - activation_on_its_first_use
+      description: "Object used to determine if the activation was done on the customer's first use as against regular activation."
+      type: object
+      properties:
+        activation_card_type:
+          type: string
+          enum: ["DEBIT", "CREDIT"]
+          description: The card type to be activated weather debit or credit.
+        activation_on_its_first_use:
+          type: boolean
+          description: "True - Card Activation being requested as part of its first use.
+                    False - Regular Card Activation by calling contact center or from ScotiaOnline using activation link."
+
+    DataResponse:
+      type: object
+      properties:
+        data_result:
+          type: string
+          description: 'The result of this transaction'
+          example: "The request has been processed successfully"
+        activation_date_time:
+          type: string
+          format: date-time
+
+    ##Empty data Response wrapper object for all error codes
+    EmptyDataResponse:
+      type: object
+      properties:
+        data:
+          type: string
+          example: null
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+
+    ##Standard Notification object
+    Notification:
+      type: object
+      required:
+        - code
+        - timestamp
+        - uuid
+      properties:
+        category:
+          type: string
+          example: BAD_GATEWAY
+          description: Category of this notification as a Http status
+        code:
+          type: string
+          example: E422TDSKTMBILLPPAYRCPTG001
+          description: Notification code. First character indicates severity (E,W,I).
+        message:
+          type: string
+          example: Something is invalid
+          description: Description of the error or information notification. Where the response is 2xx, it's a notification with informational details about this response.
+        description:
+          type: string
+          description: Message which explains the notification.
+        action:
+          type: string
+          description: A suggested action following this notification.
+        metadata:
+          type: object
+          description: Context specific to this area. May not be provided.
+          additionalProperties:
+            type: object
+            properties: {}
+        uuid:
+          type: string
+          example: aadde-ddddee-eeeedd-eeeedd
+          description: Unique identifier for this notification
+        timestamp:
+          type: string
+          format: date-time
+          example: 2017-10-12T20:38:45.408Z
+          description: Timestamp of the notification.
+        severity:
+          type: string
+          description: Severity of the notification (ERROR, WARNING, INFO, UNSPECIFIED)
+
+  ##Parameters
+
+  parameters:
+
+    TraceId:
+      name: x-b3-traceid
+      in: header
+      required: true
+      schema:
+        type: string
+      description: |
+        Also known as a Correlation ID, is a unique identifier value that is attached to requests and Notifications that allow reference to a particular business transaction or event chain across multiple integration tiers. 
+        x-b3-traceid header is automatically generated/passed through when Spring Cloud Sleuth is included as a dependency. Sleuth is a transitive dependency of Chassis. 
+        If project team needs to create trace id  their own , it has to be 16 digit hexadecimal number(64 bit, since digit in hexadecimal represents 4 bits) e.g. 71200de3d3f82a83 as supported by Chassis.          
+      example: "41200de3d3e82a81"
+
+    SpanId:
+      name: x-b3-spanid
+      in: header
+      required: true
+      schema:
+        type: string
+      description: |
+        This header represents root span id. The span represents a basic unit of work.  Span is the primary building block of a distributed trace, representing an individual unit of work done in a distributed system. Spans will contain “References” to other spans, which allows multiple Spans to be assembled into one complete Trace - a visualization of the life of a request as it moves through a distributed system.
+        The trace id (x-b3-traceid) contains a set of span ids, forming a tree-like structure. The trace id will remain the same as one micro service calls the next. Spans have parent-child relationships. This span id creates parent-child relationship with the child spans to generate a trace tree out of all the spans for a request. If project team needs to create span id  their own , it has to be 16 digit hexadecimal number(64 bit, since digit in hexadecimal represents 4 bits) e.g. 71200de3d3f82a83 as supported by Chassis. 
+      example: "41200de3d3e82a81"
+
+    ChannelId:
+      name: x-channel-id
+      in: header
+      required: true
+      schema:
+        type: string
+        enum:
+          - Branch
+          - CallCentre
+          - ABM
+          - DFC
+          - NCC
+          - BackOffice
+          - Public
+          - Online
+          - Mobile
+          - OtherFI
+          - IVR
+          - POS
+      description: |
+        This is to identify the Channel which is making this request. Originating application is responsible for sending x-channel-id. 
+        For example, if  application 1 makes call to application 2 and then application 2 makes a call to application 3, application 1 will populate and send the x-channel-id to application 2 and application 2 will propagate the same x-channel-id to application 3.       
+      example: "ABM"
+
+    OriginatingApplicationCode:
+      name: x-originating-appl-code
+      in: header
+      required: true
+      schema:
+        type: string
+      description: |
+        This is to identify the source Application EPM code which is making this request.
+        Originating application is responsible for sending x-originating-appl-code. For example, if  application 1 makes call to application 2 and then application 2 makes a call to application 3, application 1 will populate and send the x-originating-appl-code to application 2 and application 2 will propagate the same x-originating-appl-code to application 3.        
+      example: "BDMS"
+
+    CountryCode:
+      name: x-country-code
+      in: header
+      required: true
+      schema:
+        type: string
+      description: |
+        This header represents the country code of API client which is making the request. 
+        ISO 3166 Alpha 2 Code (https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) is enforced.        
+      example: "CA"
+
+    ApiVersion:
+      name: x-api-version
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        This is the run time minor and patch version of the API. 
+        If major version of the API is released then this major version digits need to be reconciled. Example x.1        
+      example: "1.1"
+      
+      
+    Key:
+      name: key
+      required: true
+      in: path
+      description: Unique identifier can be use to debit card number.
+      schema:
+        type: string
+        format: string
+
+    UserContext:
+      name: x-user-context
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        When there is requirement to pass additional user context attributes as optional headers when a service api is called. x-user-context is needed to be utilized to pass optional header attributes.
+        This header must be a Base64 encoded String for API Spec. The below country specific optional headers is converted to base64 encoded string.
+        Object structure example of  x-user-context -  { "sub-channel" : "Mobile IOS", "officer-id" : "456", "transit-id" : "556", teller-id" : "7464", " originating-ip-address":"122.122.12.11"} . 
+        eyAic3ViLWNoYW5uZWwiIDogIk1vYmlsZSBJT1MiLCAib2ZmaWNlci1pZCIgOiAiNDU2IiwgInRyYW5zaXQtaWQiIDogIjU1NiIsIHRlbGxlci1pZCIgOiAiNzQ2NCIsICIgb3JpZ2luYXRpbmctaXAtYWRkcmVzcyI6IjEyMi4xMjIuMTIuMTEifQ==
+      example: eyAic3ViLWNoYW5uZWwiIDogIk1vYmlsZSBJT1MiLCAib2ZmaWNlci1pZCIgOiAiNDU2IiwgInRyYW5zaXQtaWQiIDogIjU1NiIsIHRlbGxlci1pZCIgOiAiNzQ2NCIsICIgb3JpZ2luYXRpbmctaXAtYWRkcmVzcyI6IjEyMi4xMjIuMTIuMTEifQ==
